@@ -3,23 +3,129 @@ import roslib
 roslib.load_manifest('color_tracker')
 import rospy
 
-import cv
+import cv2
+import numpy as np
 from std_msgs.msg import String
+from std_msgs.msg import Empty
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
+from geometry_msgs.msg import Point
+import actionlib
+from std_srvs.srv import Empty 
 #import cv
+class ColourTracker:
+  def __init__(self):
+    cv2.namedWindow("ColourTrackerWindow", cv2.CV_WINDOW_AUTOSIZE)
+    #self.capture = cv2.VideoCapture(0)
+    self.scale_down = 4
+  def run(self,orig_img):
+    
+      #f, orig_img = self.capture.read()
+      orig_img = cv2.flip(orig_img, 1)
+      #print orig_img
+      img = cv2.GaussianBlur(orig_img, (5,5), 0)
+      #print img
+      img = cv2.cvtColor(orig_img, cv2.COLOR_BGR2HSV)
+      img = cv2.resize(img, (len(orig_img[0]) / self.scale_down, len(orig_img) / self.scale_down))
+      #print img
+      #red_lower = np.array([100, 220, 100],np.uint8)
+      #red_upper = np.array([180, 255, 155],np.uint8)
+      blue_lower = np.array([100,150,210])
+      blue_upper = np.array([130,180,230])	
+      #red_binary = cv2.inRange(img, red_lower, red_upper)
+      blue_binar = cv2.inRange(img,blue_lower, blue_upper)
+      #print red_binary
+      cv2.imshow('binary image',blue_binary)
+      cv2.waitKey(1)
+      dilation = np.ones((15, 15), "uint8")
+      red_binary = cv2.dilate(red_binary, dilation)
+      contours, hierarchy = cv2.findContours(red_binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+      max_area = 0
+      largest_contour = None
+      for idx, contour in enumerate(contours):
+        area = cv2.contourArea(contour)
+        if area > max_area:
+          max_area = area
+          largest_contour = contour
+        
+      return largest_contour,orig_img
+      
+bridge=CvBridge()
+color=ColourTracker()
 def callback(data):
-    print 'hello'
-    img=CvBridge.imgmsg_to_cv2(data,"bgr8")
-    cv.imshow(img)
-    cv.waitKey(1)
+    
+    img=bridge.imgmsg_to_cv2(data,"bgr8")
+    #print img.shape
+    #img=cv2.imread('/home/rohan/catkin_ws/src/frame0001.jpg',1)
+    #print img    
+    #img=cv2.cvtColor(img, cv2.COLOR_RGB2BGR)    
+    #cv2.imshow('Bottom Camera',img)
+    #cv2.waitKey(1)
+    
+    largest_contour,orig_img=color.run(img)
+    #print largest_contour
+    #cv2.imshow('Testing',orig_img)
+    #cv2.waitKey(1)
+    landing_pad=rospy.get_param('landing_pad','pix')
+    
+    
+        
+    pub=rospy.Publisher(landing_pad,Point)
+    p=Point()
+    if not largest_contour == None:
+        moment = cv2.moments(largest_contour)
+        if moment["m00"] > 1000 / color.scale_down:
+          rect = cv2.minAreaRect(largest_contour)
+          rect = ((rect[0][0] * color.scale_down, rect[0][1] * color.scale_down), (rect[1][0] * color.scale_down, rect[1][1] * color.scale_down), rect[2])
+            
+          #print rect
+          #print 'center is' , rect[0][0],rect[0][1] 
+          
+	  p.x=rect[0][0]
+          p.y=rect[0][1]
+          p.z=0
+          #if value==True:
+          pub.publish(p)
+          
+	  rospy.loginfo(p)
+	  rospy.loginfo("color_tracker-: Sent target now toggling the cam")
+          rospy.wait_for_service('ardrone/togglecam')
+          toggle_cam=rospy.ServiceProxy('ardrone/togglecam',Empty)
+          #toggle_cam.wait_for_server()
+          try:
 
-
+	          state=toggle_cam()
+		  print state
+                  rospy.loginfo("color_tracker-: toogled the cam")
+          except rospy.ServiceException as exc:
+		rospy.loginfo("Service didn't process request"+str(exc))
+          
+          #rospy.set_param('check',False)  
+          box = cv2.cv.BoxPoints(rect)
+          #print box
+          
+          box = np.int0(box)
+          #print box
+          cv2.drawContours(orig_img,[box], 0, (0, 0, 255), 2)
+          cv2.imshow("ColourTrackerWindow", orig_img)
+          cv2.waitKey(1)
+	  ''' 
+          if cv2.waitKey(20) == 27:
+              cv2.destroyWindow("ColourTrackerWindow")
+              self.capture.release()
+              break
+          '''
+    	else:
+        	rospy.loginfo("color_tracker-: Cant find the red box")
+          
+         
 def listener():
-    rospy.init_node('listener',anonymous=True)
-    rospy.Subscriber("/ardone/bottom/image_raw",Image,callback)
+    rospy.init_node('landing_pad',anonymous=True)
+    rospy.set_param('check',False)
+    rospy.Subscriber("/ardrone/bottom/image_raw",Image,callback)
     rospy.spin()
 
 
 if __name__ == '__main__':
     listener()
+

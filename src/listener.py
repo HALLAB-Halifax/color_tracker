@@ -25,9 +25,12 @@ class ColourTracker:
       img = cv2.cvtColor(orig_img, cv2.COLOR_BGR2HSV)
       img = cv2.resize(img, (len(orig_img[0]) / self.scale_down, len(orig_img) / self.scale_down))
       #print img
-      red_lower = np.array([100, 220, 100],np.uint8)
-      red_upper = np.array([180, 255, 155],np.uint8)
-      red_binary = cv2.inRange(img, red_lower, red_upper)
+      #red_lower = np.array([100, 220, 100],np.uint8)
+      #red_upper = np.array([180, 255, 155],np.uint8)
+      blue_lower = np.array([100,150,210])
+      blue_upper = np.array([130,180,230])
+      #red_binary = cv2.inRange(img, red_lower, red_upper)
+      red_binary = cv2.inRange(img,blue_lower, blue_upper)
       #print red_binary
       cv2.imshow('binary image',red_binary)
       cv2.waitKey(1)
@@ -60,7 +63,7 @@ def callback(data):
     #print largest_contour
     #cv2.imshow('Testing',orig_img)
     #cv2.waitKey(1)
-    landing_pad=rospy.get_param('landing_pad','landing_pad')
+    landing_pad=rospy.get_param('landing_pad','pix')
     value=rospy.get_param('check')
     
         
